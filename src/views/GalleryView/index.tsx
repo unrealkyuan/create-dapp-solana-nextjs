@@ -1,32 +1,42 @@
 import Link from "next/link";
-import { FC, useState } from "react";
+import { FC, useState, useCallback } from "react";
+import useSWR from "swr";
 import { useWallet } from "@solana/wallet-adapter-react";
 import { WalletMultiButton } from "@solana/wallet-adapter-react-ui";
 import { useWalletNfts, NftTokenAccount } from "@nfteyez/sol-rayz-react";
-// import { useConnection } from "@solana/wallet-adapter-react";
+import { useConnection } from "@solana/wallet-adapter-react";
+import Gallery from 'react-photo-gallery';
 
-import { Loader, SolanaLogo, SelectAndConnectWalletButton } from "components";
+import { Loader, SelectAndConnectWalletButton } from "components";
+import SelectedImage from "./SelectedImage";
 import { NftCard } from "./NftCard";
+import { fetcher } from "utils/fetcher";
 import styles from "./index.module.css";
-const walletPublicKey = "3EqUrFrjgABCWAnqMYjZ36GcktiwDtFdkNYwY6C6cDzy";
+const walletPublicKey = "";
 
+declare type Photo = {
+  src: string;
+  width: number;
+  height: number;
+};
+/* Connection is set to devnet. Comment out connection to use mainnet */
 export const GalleryView: FC = ({}) => {
-  // const { connection } = useConnection();
+  const { connection } = useConnection();
   const [walletToParsePublicKey, setWalletToParsePublicKey] =
     useState<string>(walletPublicKey);
   const { publicKey } = useWallet();
 
   const { nfts, isLoading, error } = useWalletNfts({
     publicAddress: walletToParsePublicKey,
-    // connection,
+    //connection,
   });
 
   console.log("nfts", nfts);
 
-  const onChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const { value } = e.target;
-    setWalletToParsePublicKey(value.trim());
-  };
+  // const onChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+  //   const { value } = e.target;
+  //   setWalletToParsePublicKey(value.trim());
+  // };
 
   const onUseWalletClick = () => {
     if (publicKey) {
@@ -59,6 +69,9 @@ export const GalleryView: FC = ({}) => {
           </div>
           <div className="flex-none">
             <WalletMultiButton className="btn btn-ghost" />
+            <SelectAndConnectWalletButton
+              onUseWalletClick={onUseWalletClick}
+            />
           </div>
         </div>
 
@@ -67,58 +80,18 @@ export const GalleryView: FC = ({}) => {
             <div className="text-center hero-content w-full">
               <div className="w-full">
                 <h1 className="mb-5 text-5xl">
-                  NFT Gallery on Solana <SolanaLogo />
+                  select nfts to display!
                 </h1>
 
-                <div className="w-full min-w-full">
-                  <p className="mb-5">
-                    Here is very basic example of NFT Gallery. It parses
-                    mainnet. <br />
-                    And uses{" "}
-                    <a
-                      href="https://www.npmjs.com/package/@nfteyez/sol-rayz-react"
-                      target="_blank"
-                      className="link font-bold"
-                      rel="noreferrer"
-                    >
-                      @nfteyez/sol-rayz-react
-                    </a>{" "}
-                    package to fetch NFTs for specific wallet.
-                  </p>
-                  <div>
-                    <div className="form-control mt-8">
-                      <label className="input-group input-group-vertical input-group-lg">
-                        <span>Search</span>
-                        <div className="flex space-x-2">
-                          <input
-                            type="text"
-                            placeholder="Enter Wallet Address"
-                            className="w-full input input-bordered input-lg"
-                            value={walletToParsePublicKey}
-                            onChange={onChange}
-                            style={{
-                              borderRadius:
-                                "0 0 var(--rounded-btn,.5rem) var(--rounded-btn,.5rem)",
-                            }}
-                          />
-
-                          <SelectAndConnectWalletButton
-                            onUseWalletClick={onUseWalletClick}
-                          />
-                        </div>
-                      </label>
-                    </div>
-                  </div>
-                </div>
                 <div className="my-10">
-                  {error ? (
+                  {error || !publicKey? (
                     <div>
-                      <h1>Error Occures</h1>
-                      {(error as any)?.message}
+                      <h1>Reconnect Wallet</h1>
                     </div>
                   ) : null}
 
-                  {!error && isLoading ? (
+                  {!publicKey || 
+                  !error && isLoading ? (
                     <div>
                       <Loader />
                     </div>
@@ -141,6 +114,8 @@ type NftListProps = {
 };
 
 const NftList = ({ nfts, error }: NftListProps) => {
+    // selected NFTs list
+    const [selectedNfts, updateSelectedNfts] = useState<NftTokenAccount[]>([]); 
   if (error) {
     return null;
   }
@@ -153,11 +128,79 @@ const NftList = ({ nfts, error }: NftListProps) => {
     );
   }
 
+  // return (
+  //   <div className="grid grid-cols-2 md:grid-cols-4 gap-4 items-start">
+  //     {nfts?.map((nft) => (
+  //       <NftCard key={nft.mint} details={nft} onSelect={() => updateSelectedNfts(nfts)} />
+  //     ))}
+  //   </div>
+  // );
+  
+  let nftImages : Photo[] = [];
+  nfts?.forEach(function (nft) {
+    const { name, uri } = nft?.data ?? {};
+    const { data, error } = useSWR(
+      // uri || url ? getMetaUrl(details) : null,
+      uri,
+      fetcher,
+      {
+        revalidateIfStale: false,
+        revalidateOnFocus: false,
+        revalidateOnReconnect: false,
+      }
+    );
+    const { image } = data ?? {};
+
+    if(!image) {
+      return null;
+    }
+
+    const props: Photo = {
+      src: image,
+      width: 1,
+      height: 1,
+    }
+    nftImages.push(props);
+  });
+  
+  const [selectAll, setSelectAll] = useState(false);
+
+  const toggleSelectAll = () => {
+    setSelectAll(!selectAll);
+  };
+
+  const imageRenderer = useCallback(
+    ({ index, left, top, key, photo }) => (
+      <SelectedImage
+        selected={selectAll ? true : false}
+        key={key}
+        margin={"2px"}
+        index={index}
+        photo={photo}
+        left={left}
+        top={top}
+        direction={"row"} // row or column, is row-oriented by default
+      />
+    ),
+    [selectAll]
+  );
+
   return (
-    <div className="grid grid-cols-2 md:grid-cols-4 gap-4 items-start">
-      {nfts?.map((nft) => (
-        <NftCard key={nft.mint} details={nft} onSelect={() => {}} />
-      ))}
+    <div>
+      <p>
+        <button onClick={toggleSelectAll}>toggle select all</button>
+      </p>
+      <Gallery photos={nftImages} renderImage={imageRenderer} />
     </div>
   );
+
+  // return (
+  //   <div>
+  //     <ImagePicker 
+  //       images={nftImages?.map((img, i) => ({src: img, value: i}))}
+  //       onPick={() => {}}
+  //     />
+  //     <button type="button" onClick={() => console.log("hello")}>OK</button>
+  //   </div>
+  // )
 };

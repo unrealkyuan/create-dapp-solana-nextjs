@@ -34,14 +34,18 @@ export const SelectAndConnectWalletButton: FC<Props> = ({
       console.log("Error connecting to the wallet: ", (error as any).message);
     }
   };
-
-  return (
+  const loadNftButton = (
     <button
-      className="btn btn-primary btn-lg"
+      className="btn btn-primary"
       onClick={handleWalletClick}
       disabled={connecting}
     >
-      {publicKey ? <div>Use Wallet Address</div> : <div>Connect Wallet</div>}
+      Load NFTs
     </button>
-  );
+  )
+  if (publicKey) {
+    return loadNftButton;
+  } else {
+    return null;
+  }
 };
